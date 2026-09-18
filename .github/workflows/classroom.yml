@@ -11,19 +11,68 @@ jobs:
     name: Autograding
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # TODO build, test and deploy project
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
+      - name: Run unit tests and static checks
+        run: make check
+
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t person-service:${{ github.sha }} .
+
+      - name: Deploy Docker image to Heroku
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+        run: |
+          echo "$HEROKU_API_KEY" | docker login --username=_ --password-stdin registry.heroku.com
+          HEROKU_IMAGE="registry.heroku.com/$HEROKU_APP_NAME/web"
+          docker tag "person-service:${{ github.sha }}" "$HEROKU_IMAGE"
+          docker push "$HEROKU_IMAGE"
+
+          WEB_DOCKER_IMAGE_ID=$(docker inspect "person-service:${{ github.sha }}" --format='{{.Id}}')
+          RELEASE_PAYLOAD=$(jq -n --arg image "$WEB_DOCKER_IMAGE_ID" '{updates: [{type: "web", docker_image: $image}]}')
+          curl --fail --show-error --silent \
+            --request PATCH "https://api.heroku.com/apps/$HEROKU_APP_NAME/formation" \
+            --header "Authorization: Bearer $HEROKU_API_KEY" \
+            --header "Accept: application/vnd.heroku+json; version=3.docker-releases" \
+            --header "Content-Type: application/json" \
+            --data "$RELEASE_PAYLOAD"
+
+      - name: Wait for deployed service
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent "https://$HEROKU_APP_NAME.herokuapp.com/health"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+
+      - name: Prepare Postman environment
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          HEROKU_APP_NAME: ${{ secrets.HEROKU_APP_NAME }}
+        run: |
+          jq --arg url "https://$HEROKU_APP_NAME.herokuapp.com" \
+            '(.values[] | select(.key == "baseUrl") | .value) = $url' \
+            'postman/[inst][heroku] Lab1.postman_environment.json' > /tmp/heroku-postman-environment.json
+          mv /tmp/heroku-postman-environment.json 'postman/[inst][heroku] Lab1.postman_environment.json'
 
       - name: Run API Tests
-        uses: matt-ball/newman-action@master
-        with:
-          collection: postman/[inst] Lab1.postman_collection.json
-          environment: postman/[inst][heroku] Lab1.postman_environment.json
-          delayRequest: 100
-          reporters: '[ "cli" ]'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: npx --yes newman@6.2.2 run 'postman/[inst] Lab1.postman_collection.json' -e 'postman/[inst][heroku] Lab1.postman_environment.json' --delay-request 100
 
       - name: Autograding
         uses: education/autograding@v1
