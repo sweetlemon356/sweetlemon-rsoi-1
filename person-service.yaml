@@ -1,159 +1,179 @@
-openapi: 3.0.1
+openapi: 3.0.3
 info:
-  title: OpenAPI definition
-  version: v1
+  title: Person Service API
+  version: 1.0.0
 servers:
-- url: http://localhost:8080
+  - url: http://localhost:8080
+security: []
 paths:
+  /health:
+    get:
+      tags: [Service]
+      summary: Check service readiness
+      operationId: health
+      responses:
+        "200":
+          description: Service and database are available
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "503":
+          description: Database is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/persons:
     get:
-      tags:
-      - Person REST API operations
-      summary: Get all Persons
+      tags: [Persons]
+      summary: Get all persons
       operationId: listPersons
       responses:
         "200":
-          description: All Persons
+          description: All persons
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/PersonResponse'
+                  $ref: "#/components/schemas/PersonResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     post:
-      tags:
-      - Person REST API operations
-      summary: Create new Person
+      tags: [Persons]
+      summary: Create a person
       operationId: createPerson
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PersonRequest'
-        required: true
+              $ref: "#/components/schemas/CreatePersonRequest"
       responses:
         "201":
-          description: Created new Person
+          description: Person created
           headers:
             Location:
-              description: Path to new Person
-              style: simple
+              description: Path to the created person
+              required: true
               schema:
                 type: string
+                example: /api/v1/persons/1
         "400":
-          description: Invalid data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /api/v1/persons/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PersonID"
     get:
-      tags:
-      - Person REST API operations
-      summary: Get Person by ID
+      tags: [Persons]
+      summary: Get a person by ID
       operationId: getPerson
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int32
       responses:
         "200":
-          description: Person for ID
+          description: Requested person
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PersonResponse'
+                $ref: "#/components/schemas/PersonResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "404":
-          description: Not found Person for ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      tags:
-      - Person REST API operations
-      summary: Remove Person by ID
-      operationId: editPerson_1
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int32
-      responses:
-        "204":
-          description: Person for ID was removed
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
     patch:
-      tags:
-      - Person REST API operations
-      summary: Update Person by ID
-      operationId: editPerson
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-          format: int32
+      tags: [Persons]
+      summary: Partially update a person
+      operationId: updatePerson
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PersonRequest'
-        required: true
+              $ref: "#/components/schemas/UpdatePersonRequest"
       responses:
         "200":
-          description: Person for ID was updated
+          description: Updated person
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PersonResponse'
+                $ref: "#/components/schemas/PersonResponse"
         "400":
-          description: Invalid data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ValidationErrorResponse'
+          $ref: "#/components/responses/ValidationError"
         "404":
-          description: Not found Person for ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      tags: [Persons]
+      summary: Delete a person
+      operationId: deletePerson
+      responses:
+        "204":
+          description: Person deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
 components:
+  parameters:
+    PersonID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
   schemas:
-    ValidationErrorResponse:
+    CreatePersonRequest:
       type: object
-      properties:
-        message:
-          type: string
-        errors:
-          type: object
-          additionalProperties:
-            type: string
-    PersonRequest:
-      required:
-      - name
-      type: object
+      additionalProperties: false
+      required: [name]
       properties:
         name:
           type: string
+          minLength: 1
         age:
           type: integer
           format: int32
+          minimum: 0
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        work:
+          type: string
+          nullable: true
+    UpdatePersonRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+        age:
+          type: integer
+          format: int32
+          minimum: 0
         address:
           type: string
         work:
           type: string
     PersonResponse:
-      required:
-      - id
-      - name
       type: object
+      required: [id, name]
       properties:
         id:
           type: integer
@@ -163,12 +183,45 @@ components:
         age:
           type: integer
           format: int32
+          nullable: true
         address:
           type: string
+          nullable: true
         work:
           type: string
+          nullable: true
     ErrorResponse:
       type: object
+      required: [message]
       properties:
         message:
           type: string
+    ValidationErrorResponse:
+      type: object
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+  responses:
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+    NotFound:
+      description: Person not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
