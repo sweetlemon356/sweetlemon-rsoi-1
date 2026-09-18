@@ -1,0 +1,6 @@
+.git
+.github
+.idea
+.vscode
+src/.env
+**/*_test.go
