@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    name: Build Docker image
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
         run: docker build --platform linux/amd64 -t person-service:${{ github.sha }} .
 
   unit_tests:
-    name: Unit tests and static checks
+    name: Unit tests
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -33,7 +33,7 @@ jobs:
         run: make check
 
   deploy:
-    name: Deploy to Render
+    name: Deploy
     needs: unit_tests
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
@@ -156,13 +156,3 @@ jobs:
       - name: Autograding
         uses: education/autograding@v1
         continue-on-error: true
-
-      - name: Github auto grader mark
-        uses: Romanow/google-sheet-autograder-marker@v1.0
-        with:
-          google_token: ${{secrets.GOOGLE_API_KEY}}
-          sheet_id: "1xkgjUX6Qmk7rdJG-QPOToav-HWWtthJjnShIKnw3oIY"
-          homework_number: 1
-          user_column: 'D'
-          column_offset: 'F'
-          mark: "'+"
