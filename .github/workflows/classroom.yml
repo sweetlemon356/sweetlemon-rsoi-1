@@ -11,27 +11,34 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    name: Autograding
+    name: Build Docker image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t person-service:${{ github.sha }} .
 
+  unit_tests:
+    name: Unit tests and static checks
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
-
       - name: Run unit tests and static checks
         run: make check
 
-      - name: Build Docker image
-        run: docker build --platform linux/amd64 -t person-service:${{ github.sha }} .
-
+  deploy:
+    name: Deploy to Render
+    needs: unit_tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to Render through REST API
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
@@ -112,7 +119,6 @@ jobs:
           exit 1
 
       - name: Wait for deployed service
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           RENDER_BASE_URL: ${{ secrets.RENDER_BASE_URL }}
         run: |
@@ -126,8 +132,14 @@ jobs:
           done
           exit 1
 
+  api_tests:
+    name: Newman and autograding
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Prepare Postman environment
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           RENDER_BASE_URL: ${{ secrets.RENDER_BASE_URL }}
         run: |
@@ -139,7 +151,6 @@ jobs:
           mv /tmp/render-postman-environment.json 'postman/[inst][heroku] Lab1.postman_environment.json'
 
       - name: Run API Tests
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: npx --yes newman@6.2.2 run 'postman/[inst] Lab1.postman_collection.json' -e 'postman/[inst][heroku] Lab1.postman_environment.json' --delay-request 100
 
       - name: Autograding
