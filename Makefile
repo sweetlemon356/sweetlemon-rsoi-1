@@ -25,7 +25,12 @@ fmt:
 	cd src && go fmt ./...
 
 test:
-	cd src && go test -count=1 ./tests/...
+	@cd src && output=$$(go test -count=1 -v ./tests/... 2>&1); status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		printf '%s\n' "$$output" | awk '/^--- PASS: / { print $$3 ": PASS" }'; \
+	else \
+		printf '%s\n' "$$output"; exit $$status; \
+	fi
 
 vet:
 	cd src && go vet ./...
